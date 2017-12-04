@@ -19,7 +19,6 @@ https://github.com/code-iai/iai_kinect2
 
 • Opencv 2.4.13 Library
 
-• Socket Communication for robot controller
 
 
 
@@ -37,6 +36,11 @@ https://github.com/code-iai/iai_kinect2
 • In a new terminal window type "rosservice call/redirect image". This command captures an image from the kinect V2 camera and publishes it into a topic for image processing.
 
 
-• After the completion of image processing steps, a text file named "robot_commands.txt" is generated which is saved in a given directory. This text file is then send to the Toshiba robot controller with the help of another ROS socket communication package. 
+• After the completion of image processing steps, a text file named "robot_commands.txt" is generated which is saved in a given directory. This text file is then send to the Toshiba robot controller with the help of another ROS socket package robot_communication. In a terminal type "rosrun robot_communication send_command", this will publish the coordinates in the text file on a topic.  
+
+
+• Finally, in another terminal type "rosrun robot_communication receive_command"
+
+
 
 
