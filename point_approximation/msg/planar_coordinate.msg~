@@ -1,0 +1,2 @@
+double x
+double y

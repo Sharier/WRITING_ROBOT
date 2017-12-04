@@ -1,0 +1,134 @@
+<launch>
+  <include
+  file="$(find kinect2_bridge)/launch/kinect2_bridge.launch">
+  </include>
+  <group ns="/">
+    <node
+    pkg="recognition_and_delineation_of_writings"
+    type="starting_node"
+    name="starting_node"
+    required="true"
+    clear_params="true"
+    output="screen"
+    launch-prefix="xterm -e">
+      <remap
+      from="image/kinect2/environment/color"
+      to="/kinect2/hd/image_color_rect">
+      </remap>
+    </node>
+    <node
+    pkg="paper_detection"
+    type="rectangle_detection"
+    name="rectangle_detection"
+    required="true"
+    clear_params="false"
+    output="screen"
+    launch-prefix="xterm -e">
+      <remap
+      from="image/environment"
+      to="image/raw/environment">
+      </remap>
+    </node>
+    <node
+    pkg="paper_detection"
+    type="centering"
+    name="centering"
+    required="true"
+    clear_params="true"
+    output="screen"
+    launch-prefix="xterm -e">
+      <remap
+      from="element"
+      to="rectangle/element">
+      </remap>
+      <remap
+      from="image/environment"     
+      to="/kinect2/hd/image_color_rect">
+      </remap>
+      <remap
+      from="image/centered"
+      to="image/paper/raw">
+      </remap>
+    </node>
+    <node
+    pkg="writings_determination"
+    type="binary"
+    name="binary"
+    required="true"
+    clear_params="false"
+    output="screen"
+    launch-prefix="xterm -e">
+    </node>
+    <node
+    pkg="writings_determination"
+    type="skeleton"
+    name="skeleton"
+    required="true"
+    clear_params="true"
+    output="screen"
+    launch-prefix="xterm -e">
+    </node>
+    <node
+    pkg="writings_determination"
+    type="rim"
+    name="rim"
+    required="true"
+    clear_params="false"
+    output="screen"
+    launch-prefix="xterm -e">
+    </node>
+    <node
+    pkg="writings_determination"
+    type="writings_determination"
+    name="writings_determination"
+    required="true"
+    clear_params="true"
+    output="screen"
+    launch-prefix="xterm -e">
+    </node>
+    <node
+    pkg="point_approximation"
+    type="point_chaining"
+    name="point_chaining"
+    required="true"
+    clear_params="false"
+    output="screen"
+    launch-prefix="xterm -e">
+      <remap
+      from="image/writings"
+      to="image/paper/writings">
+      </remap>
+    </node>
+    <node
+    pkg="coordinate_exposure"
+    type="routing"
+    name="routing"
+    required="false"
+    clear_params="true"
+    output="screen"
+    launch-prefix="xterm -e">
+    </node>
+    <node
+    pkg="coordinate_exposure"
+    type="coordinate_saving"
+    name="coordinate_saving"
+    required="true"
+    clear_params="false"
+    output="screen"
+    launch-prefix="xterm -e">
+      <remap
+      from="coordinate/coordinate_chain_set"
+      to="world_coordinate/coordinate_chain_set">
+      </remap>
+    </node>
+    <node
+    pkg="coordinate_exposure"
+    type="coordinate_calculation"
+    name="coordinate_calculation"
+    required="true"
+    clear_params="false"
+    output="screen"
+    launch-prefix="xterm -e">
+    </node>
+  </group>
+</launch>

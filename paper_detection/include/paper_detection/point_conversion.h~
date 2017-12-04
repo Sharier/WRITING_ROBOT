@@ -1,0 +1,29 @@
+#ifndef PAPER_DETECTION_CONVERSION_H
+#define PAPER_DETECTION_CONVERSION_H
+
+#include <vector>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <paper_detection/point.h>
+#include <paper_detection/point_set.h>
+#include <paper_detection/point_sets.h>
+
+// Funktion zur Umwandlung von msg-Format point zu Point
+void decodePoint(const paper_detection::point& input, cv::Point& output);
+
+// Funktion zur Umwandlung von Point zu msg-Format point
+void codePoint(const cv::Point& input, paper_detection::point& output);
+
+// Funktion zur Umwandlung von msg-Format vector_of_points zu vector<Point>
+void decodePointSet(const paper_detection::point_set& input, std::vector<cv::Point>& output);
+
+// Funktion zur Umwandlung von vector<Point> zu msg-Format vector_of_points
+void codePointSet(const std::vector<cv::Point>& input, paper_detection::point_set& output);
+
+// Funktion zur Umwandlung von msg-Format vector_of_vector_of_points zu vector<vector<Point> >
+void decodePointSets(const paper_detection::point_sets& input, std::vector<cv::Point>& output);
+
+// Funktion zur Umwandlung von vector<vector<Point> > zu msg-Format vector_of_vector_of_points
+void codePointSets(const std::vector<cv::Point>& input, paper_detection::point_sets& output);
+
+#endif // PAPER_DETECTION_CONVERSION_H

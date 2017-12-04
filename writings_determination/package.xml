@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+
+<package>
+  <name>writings_determination</name>
+
+  <version>0.0.0</version>
+
+  <description>
+The package was originally created to determine the writings on a sheet of paper. It has one node which offers two services and another node that offers one service. The first of the mentioned nodes deals with binary tasks. The centerpiece of this node is the service binarization which creates a binary image out of a received image. The second node has a service skeletonization that tries to thin existing lines in the request. The resulting image of the thinning can be found in the response. Both services use a custom srv file that can be used additionally for each image exchanging service.
+  </description>
+
+  <maintainer email="phi_tie@uni-bremen.de">Philip Tietjen</maintainer>
+
+  <license>BSD</license>
+
+  <author email="phi_tie@uni-bremen.de">Philip Tietjen</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>cv_bridge</build_depend>
+  <build_depend>image_transport</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>coordinate_exposure</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>message_generation</build_depend>
+
+  <run_depend>cv_bridge</run_depend>
+  <run_depend>image_transport</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>coordinate_exposure</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>message_runtime</run_depend>
+
+  <export></export>
+</package>

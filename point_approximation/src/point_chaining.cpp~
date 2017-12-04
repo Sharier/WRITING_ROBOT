@@ -1,0 +1,475 @@
+// Einbinden der Bibliotheken, darunter OpenCV und von der Node benutzte Message-Typen
+#include <ros/ros.h>
+#include <stdlib.h>
+#include <vector>
+#include <set>
+#include <image_transport/image_transport.h>
+#include <cv_bridge/cv_bridge.h>
+#include <sensor_msgs/image_encodings.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/highgui/highgui.hpp>
+#include <coordinate_exposure/coordinate_sets.h>
+#include <coordinate_exposure/coordinate_conversion.h>
+
+static const std::string OPENCV_WINDOW = "Approximated image";
+
+const bool REMOVE = true;
+const bool KEEP = false;
+
+const int PIXEL_AMOUNT_DEFAULT = 10;
+
+// Klasse, die die Ordnungsrelation für die OpenCV-Punkte zur Speicherung in set bereitstellt
+class PointOrder
+{
+public:
+  bool operator() (cv::Point pt_a, cv::Point pt_b)
+  {
+    if(pt_a.x > pt_b.x)
+    {
+      return 0;
+    }
+    else if(pt_a.x == pt_b.x)
+    {
+      if(pt_a.y >= pt_b.y)
+      {
+        return 0;
+      }
+      else
+      {
+        return 1;
+      }
+    }
+    else
+    {
+      return 1;
+    }
+  }
+};
+
+// Funktion, die zu einer übergebenen 3x3-Matrix testet, ob es sich beim Bildpunkt in der Mitte um einen Knoten- oder Schnittpunkt handelt
+bool isIntersectionPoint(const cv::Mat_<unsigned char>& kernel)
+{
+  int first_term, second_term;
+  // Anfangsvoraussetzung, dass der Bildpunkt mit einer 1 belegt ist
+  if(kernel(1,1) == 1)
+  {
+    // Betrachtung der Werte für beide Bedingungsvariablen
+    first_term = (kernel(0, 0) == 0 && kernel(0, 1) == 1) + (kernel(0, 1) == 0 && kernel(0, 2) == 1) +
+                 (kernel(0, 2) == 0 && kernel(1, 2) == 1) + (kernel(1, 2) == 0 && kernel(2, 2) == 1) +
+                 (kernel(2, 2) == 0 && kernel(2, 1) == 1) + (kernel(2, 1) == 0 && kernel(2, 0) == 1) +
+                 (kernel(2, 0) == 0 && kernel(1, 0) == 1) + (kernel(1, 0) == 0 && kernel(0, 0) == 1);
+    second_term = kernel(0, 0) * kernel(0, 1) * kernel(0, 2) + kernel(0, 1) * kernel(0, 2) * kernel(1, 2) +
+                  kernel(0, 2) * kernel(1, 2) * kernel(2, 2) + kernel(1, 2) * kernel(2, 2) * kernel(2, 1) +
+                  kernel(2, 2) * kernel(2, 1) * kernel(2, 0) + kernel(2, 1) * kernel(2, 0) * kernel(1, 0) +
+                  kernel(2, 0) * kernel(1, 0) * kernel(0, 0) + kernel(1, 0) * kernel(0, 0) * kernel(0, 1);
+   // int third_term= (kernel(0,1)*kernel(1,2)*kernel(2,1));
+   // int fourth_term= (kernel(1,0)*kernel(1,2)*kernel(2,1));
+
+    // Überprüfung, ob die berechneten Werte die Bedingungen erfüllen und entsprechenden Wahrheitswert zurückgeben
+    if(first_term >= 3 && second_term == 0)
+    {
+      return true;
+    }
+  }
+
+  // Es handelt sich um keinen Knotenpunkt (--> Rückgabe von false), da nicht alle obigen Kriterien eingehalten sind
+  return false;
+}
+
+// Funktion, die zu einer übergebenen 3x3-Matrix testet, ob es sich beim Bildpunkt in der Mitte um einen Endpunkt handelt
+bool isEndPoint(const cv::Mat_<unsigned char>& kernel)
+{
+  int first_term, second_term;
+;
+
+  // Anfangsvoraussetzung, dass der betrachtete Pixel einen Wert von 1 besitzt
+  if(kernel(1,1) == 1)
+  {
+    // Berechnung der Werte bezüglich der zu betrachtenden Kriterien
+    first_term = cv::sum(kernel)[0];
+    second_term = (kernel(0, 0) == 0 && kernel(0, 1) == 1) + (kernel(0, 1) == 0 && kernel(0, 2) == 1) +
+                  (kernel(0, 2) == 0 && kernel(1, 2) == 1) + (kernel(1, 2) == 0 && kernel(2, 2) == 1) +
+                  (kernel(2, 2) == 0 && kernel(2, 1) == 1) + (kernel(2, 1) == 0 && kernel(2, 0) == 1) +
+                  (kernel(2, 0) == 0 && kernel(1, 0) == 1) + (kernel(1, 0) == 0 && kernel(0, 0) == 1);
+
+    //int third_term= (kernel(0,1)*kernel(1,2)*kernel(2,1));
+    //int fourth_term= (kernel(1,0)*kernel(1,2)*kernel(2,1));
+
+    // Vergleich der Werte mit den Vorgaben und Rückgabe von logischer 1 bei Übereinstimmung
+    if(first_term >= 2 && first_term <= 3&& second_term == 1 )   //Overwriting but improved at first_term>=3&& second_term<=7
+    {
+      return true;
+    }
+  }
+
+  // Es handelt sich um keinen Endpunkt (--> Rückgabe von false), da nicht alle obigen Kriterien eingehalten sind
+  return false;
+}
+
+// Aufgestellte Klasse zur Ermittlung der relativen Positionen, mithilfe derer sich die Schriftzüge des Bildes linear approximieren lassen
+class CoordinateDetector
+{
+private:
+  ros::NodeHandle rel_node_;
+  ros::NodeHandle pri_node_;
+  image_transport::ImageTransport it_;
+  image_transport::Subscriber img_sub_;
+  ros::Publisher ros_pub_;
+  cv::Mat machined_;
+  std::set<cv::Point, PointOrder> pts_memory_;
+
+  // Funktion, die die Reaktion auf den Erhalt einer Image-Message festlegt
+  void rxCallback(const sensor_msgs::ImageConstPtr& msg)
+  {
+    std::vector<std::vector<cv::Point_<double> > > pos_chain_set;
+    coordinate_exposure::coordinate_sets msg_pos_chain_set;
+    cv_bridge::CvImagePtr cv_ptr;
+    cv::Mat src;
+
+    // Mit Fehlermeldung abgesicherter Versuch, den Bildinhalt der Message in OpenCV-kompatible Version zu übertragen
+    try
+    {
+      cv_ptr = cv_bridge::toCvCopy(msg, sensor_msgs::image_encodings::MONO8);
+    }
+    catch (cv_bridge::Exception& e)
+    {
+      ROS_ERROR("Problem with cv_bridge regarding the conversion from ROS to CV format: %s", e.what());
+      return;
+    }
+
+    // Quellbild in Mat-Datentyp abspeichern
+    src = cv_ptr->image;
+
+    // Hinzufügung einer Randschicht an Pixeln, um die äußeren Punkte in selber Art und Weise untersuchen zu können
+    cv::copyMakeBorder(src, this->machined_, 1, 1, 1, 1, cv::BORDER_CONSTANT, cv::Scalar_<unsigned char>(0));
+
+    // Bestimmung relativer Positionen, mit denen das Bild im Nachhinein ungefähr rekonstruiert werden kann
+    positionApproximation(pos_chain_set);
+
+    // Approximationsbild anfertigen, indem Punkte linear verbunden werden; Ergebnis anzeigen und in png-Datei sichern
+    cv::Mat drawing = cv::Mat(src.size(), CV_8UC1, cv::Scalar(255));
+    for(int a = 0; a < pos_chain_set.size(); a++)
+    {
+      std::vector<cv::Point_<double> > d = pos_chain_set[a];
+      for(int b = 0; b < d.size()-1; b++)
+      {
+        cv::line(drawing, cv::Point(src.cols*d[b].x, src.rows*d[b].y), cv::Point(src.cols*d[b+1].x, src.rows*d[b+1].y), cv::Scalar(0), 2, 8, 0);
+      }
+    }
+    cv::imwrite("/home/ros/Bilder/approximated_image.png", drawing);
+    cv::imshow("approximated image", drawing);
+    cv::waitKey(0);
+
+    // Information des Benutzer über die Ergebnisse der Analyse
+    if(pos_chain_set.empty())
+    {
+      ROS_ERROR("Found no coordinates to publish.");
+    }
+    else
+    {
+      ROS_INFO("Approximated the writings successfully with a set of relative position chains. Publishing the result.");
+    }
+
+    // Umwandlung in übertragbares Format und Publishen der Resultate
+    codeCoordinateSets(pos_chain_set, msg_pos_chain_set);
+    ros_pub_.publish(msg_pos_chain_set);
+  }
+
+public:
+  int pixel_amount_;
+
+  CoordinateDetector()
+    // Verwendung von ImageTransport-Objekt it_ zum Austausch von Messages mit Bildinhalt
+    : it_(rel_node_), pri_node_("~")
+  {
+    // Bestimmung des subscribed Topic sowie der Handlungsschritte im Anschluss an das Empfangen einer Messages durch die Angabe der Callback-Funktion; Erstellung eines Publishers für das Topic, auf dem die Ergebnisse publisht werden sollen
+    img_sub_ = it_.subscribe("image/writings", 1, &CoordinateDetector::rxCallback, this);
+    ros_pub_ = rel_node_.advertise<coordinate_exposure::coordinate_sets>("relative_position/coordinate_chain_set", 1000);
+
+    // Parameter der Länge der Approximation in Pixeln auf den Parameter Server stellen
+    if(!pri_node_.hasParam("approximation/pixel_amount"))
+    {
+      pri_node_.setParam("approximation/pixel_amount", PIXEL_AMOUNT_DEFAULT);
+    }
+  }
+
+  // Funktion erhält einen Startpunkt, von dem aus diese solange den Nachbarpixeln folgt bis ein End- oder Knotenpunkt erreicht wird; beschrittener Weg wird gespeichert, wobei Approximation daher rührt, dass erst Punkt ab einem gewissen Abstand zum Vorgängerpunkt gespeichert wird
+  std::vector<cv::Point_<double> > positionChaining(const cv::Point& start_pt, bool remove_start_pt = REMOVE)
+  {
+    std::vector<cv::Point_<double> > pos_chain;
+    cv::Point_<double> current_pos;
+    double x, y;
+
+    // Pixel-Zähler bei 0 starten
+    int pixel_counter = 0;
+
+    // Definition einer Variable zum Merken des Vorgängerpixels
+    cv::Point predecessor = cv::Point(0, 0);
+
+    // Interiermatrix auf 0 initialisieren
+    cv::Mat invert = cv::Mat(this->machined_.size(), this->machined_.type(), cv::Scalar(0));
+
+    // Ermittlung der Zeilen- und Spaltenanzahl, wobei diese um 2 geringer zu denen des bearbeiteten Bildes sind, da dem bearbeitenden Bild Rand hinzugefügt wurde
+    int rows = this->machined_.rows - 2;
+    int cols = this->machined_.cols - 2;
+
+    // Hat das Quellbild nur einen Pixel, so ist die Ausführung der Funktion umsonst
+    if(rows == 1 || cols == 1)
+    {
+      ROS_ERROR("Image processing is not possible since image has just one pixel.");
+      return pos_chain;
+    }
+
+    // Relative Startposition im Vektor hinterlassen
+    x = static_cast<double>(start_pt.x) / (cols+1);
+    y = static_cast<double>(start_pt.y) / (rows+1);
+    current_pos = cv::Point_<double>(x, y);
+    pos_chain.push_back(current_pos);
+
+    // Zum leichteren Zugriff auf die Pixel wird ein Mat_-Objekt verwendet
+    cv::Mat_<unsigned char> kernel = cv::Mat_<unsigned char>(3,3);
+
+    // Aktueller Punkt und Vergleichspunkt werden mit dem Startpunkt initialisiert
+    cv::Point reference_pt = start_pt;
+    cv::Point current_pt = reference_pt;
+
+    // 3x3-Matrix des Startpixels mit den Nachbarpixeln aus Bild extrahieren
+    kernel = this->machined_(cv::Range(start_pt.y-1, start_pt.y+2), cv::Range(start_pt.x-1, start_pt.x+2));
+
+    // Wird der Funktion mit auf den Weg gegeben, dass der Pixel des Startpunktes der Verkettung auf 0 gesetzt werden soll, so wird dies mit dieser Notation präventiv vorgenommen
+    if(remove_start_pt == REMOVE)
+    {
+      invert.at<unsigned char>(start_pt.y, start_pt.x) = 1;
+    }
+
+    // Verfolgung des Weges
+    while(true)
+    {
+      // Überprüfung sämtlicher Nachbarbildpunkte auf Wert von 1, um den nächsten Punkt der Kette zu finden, wobei die waagerechten/senkrechten vor den diagonalen Nachbarpixeln betrachtet werden; Veränderung von Ordinate und Abszisse gemäß dem Folgepunkt
+      if(kernel(1, 0) != 0 && predecessor != cv::Point(-1, 0))
+      {
+        current_pt.x--;
+        predecessor = cv::Point(1, 0);
+      }
+      else if(kernel(0, 1) != 0 && predecessor != cv::Point(0, -1))
+      {
+        current_pt.y--;
+        predecessor = cv::Point(0, 1);
+      }
+      else if(kernel(1, 2) != 0 && predecessor != cv::Point(1, 0))
+      {
+        current_pt.x++;
+        predecessor = cv::Point(-1, 0);
+      }
+      else if(kernel(2, 1) != 0 && predecessor != cv::Point(0, 1))
+      {
+        current_pt.y++;
+        predecessor = cv::Point(0, -1);
+      }
+      else if(kernel(0, 0) != 0 && predecessor != cv::Point(-1, -1) && predecessor != cv::Point(-1, 0) && predecessor != cv::Point(0, -1))
+      {
+        current_pt.x--;
+        current_pt.y--;
+        predecessor = cv::Point(1, 1);
+      }
+      else if(kernel(0, 2) != 0 && predecessor != cv::Point(1, -1) && predecessor != cv::Point(1, 0) && predecessor != cv::Point(0, -1))
+      {
+        current_pt.x++;
+        current_pt.y--;
+        predecessor = cv::Point(-1, 1);
+      }
+      else if(kernel(2, 2) != 0 && predecessor != cv::Point(1, 1) && predecessor != cv::Point(1, 0) && predecessor != cv::Point(0, 1))
+      {
+        current_pt.x++;
+        current_pt.y++;
+        predecessor = cv::Point(-1, -1);
+      }
+      else if(kernel(2, 0) != 0 && predecessor != cv::Point(-1, 1) && predecessor != cv::Point(-1, 0) && predecessor != cv::Point(0, 1))
+      {
+        current_pt.x--;
+        current_pt.y++;
+        predecessor = cv::Point(1, -1);
+      }
+      else
+      {
+        machined_.at<unsigned char>(current_pt.y, current_pt.x) = 0;
+        return pos_chain;
+      }
+
+      // Zähler für die Anzahl der Pixel, die mit der aktuellen Linie approximiert werden
+      pixel_counter++;
+
+      // Matrix mit aktuellem Element und direkten Nachbarelementen extrahieren
+      kernel = this->machined_(cv::Range(current_pt.y-1, current_pt.y+2), cv::Range(current_pt.x-1, current_pt.x+2));
+
+      // Wird auf einen Endpunkt getroffen, diesen Punkt noch im Vektor abspeichern und dann die Verkettung stoppen; Pixel in Invertiermatrix auf 1 setzen
+      if(isEndPoint(kernel))
+      {
+        invert.at<unsigned char>(current_pt.y, current_pt.x) = 1;
+        current_pos.x = static_cast<double>(current_pt.x) / (cols+1);
+        current_pos.y = static_cast<double>(current_pt.y) / (rows+1);
+        pos_chain.push_back(current_pos);
+        this->machined_ = this->machined_ - invert;
+        return pos_chain;
+      }
+
+      // Wird auf einen Knotenpunkt getroffen, diesen Punkt im Vektor abspeichern und Verkettung abbrechen; Pixel auf ursprünglichem Zustand belassen
+      else if(isIntersectionPoint(kernel))
+      {
+        current_pos.x = static_cast<double>(current_pt.x) / (cols+1);
+        current_pos.y = static_cast<double>(current_pt.y) / (rows+1);
+        pos_chain.push_back(current_pos);
+        this->machined_ = this->machined_ - invert;
+        pts_memory_.insert(current_pt);
+        return pos_chain;
+      }
+
+      // Wird auf ehemaligen Knotenpunkt getroffen, so muss dieser Punkt auch in der aktuellen Kurve gespeichert werden, um das geforderte Erscheinungsbild zu wahren; Pixel auf ursprünglichem Zustand belassen
+      else if(pts_memory_.find(current_pt) != pts_memory_.end())
+      {
+        current_pos.x = static_cast<double>(current_pt.x) / (cols+1);
+        current_pos.y = static_cast<double>(current_pt.y) / (rows+1);
+        pos_chain.push_back(current_pos);
+        this->machined_ = this->machined_ - invert;
+        return pos_chain;
+      }
+
+      // Wird auf den Ausgangspunkt getroffen, so wird der Punkt ebenfalls abgespeichert und die Verkettung abgebrochen; Pixel braucht in der Invertierungsmatrix nicht bearbeitet werden, da dies bereits beim Start konform mit der remove_start_pt-Option geschehen ist
+      else if(current_pt == start_pt)
+      {
+        current_pos.x = static_cast<double>(current_pt.x) / (cols+1);
+        current_pos.y = static_cast<double>(current_pt.y) / (rows+1);
+        pos_chain.push_back(current_pos);
+        this->machined_ = this->machined_ - invert;
+        return pos_chain;
+      }
+
+      // Überschreitet der Abstand vom Punkt zum zuletzt gespeicherten Punkt die festgelegte Approximationsweite, so wird der Punkt im Vektor gespeichert; Pixel in Invertiermatrix auf 1 setzen
+      else if(pixel_counter >= pixel_amount_)
+      {
+        invert.at<unsigned char>(current_pt.y, current_pt.x) = 1;
+        current_pos.x = static_cast<double>(current_pt.x) / (cols+1);
+        current_pos.y = static_cast<double>(current_pt.y) / (rows+1);
+        pos_chain.push_back(current_pos);
+        reference_pt = current_pt;
+        pixel_counter = 0;
+      }
+
+      // Für die restlichen Punkte wird der Pixel in der Invertiermatrix auf 1 gesetzt und wie üblich mit der Verkettung fortgefahren
+      else
+      {
+        invert.at<unsigned char>(current_pt.y, current_pt.x) = 1;
+      }
+    }
+  }
+
+  // Funktion zur Ermittlung von relativen Positionen, mit denen ein Skelettbild durch lineare Interpolation dieser naturähnlich rekonstruiert werden kann
+  void positionApproximation(std::vector<std::vector<cv::Point_<double> > >& pos_chain_set)
+  {
+    std::vector<cv::Point_<double> > pos_chain;
+    cv::Mat_<unsigned char> kernel;
+    int i, j;
+
+    // Nutzung des Wertes auf dem Parameter Server für den Abstand der Approximationspunkte
+    pri_node_.param<int>("approximation/pixel_distance", pixel_amount_, PIXEL_AMOUNT_DEFAULT);
+
+    // Alle Zeilen bis auf die äußeren abarbeiten
+    for(i = 1; i < this->machined_.rows-1; i++)
+    {
+      // In jeder Zeile mit der zweiten Spalte beginnen
+      j = 1;
+
+      // Bis zur vorletzten Spalte durchführen
+      do
+      {
+        // Matrix mit aktuellem Element und direkten Nachbarelementen extrahieren
+        kernel = this->machined_(cv::Range(i-1, i+2), cv::Range(j-1, j+2));
+
+        // Wenn es sich um einen Endpunkt handelt, Punktverkettung durchführungen, verwendeten Spaltencounter inkrementieren und Pixelwert des Endpunktes nach Verkettung auf 0 setzen lassen, damit dieser nicht erneut berücksichtigt wird
+        if(isEndPoint(kernel))
+        {
+          pos_chain_set.push_back(positionChaining(cv::Point(j, i), REMOVE));
+          j++;
+        }
+
+        // Wenn es sich um einen Knotenpunkt handelt, Punktverkettung durchführen, aber beim selben Punkt bleiben, da es von diesem in mehrere Richtungen weitergeht; Punkt für spätere Zwecke als früheren Knotenpunkt vormerken
+        else if(isIntersectionPoint(kernel))
+        {
+          pos_chain_set.push_back(positionChaining(cv::Point(j, i), KEEP));
+          pts_memory_.insert(cv::Point(j, i));
+        }
+
+        // Wenn es sich um einen ehemaligen Knotenpunkt handelt, ebenfalls Punktverkettung durchführen und beim Punkt bleiben
+        else if(pts_memory_.find(cv::Point(j, i)) != pts_memory_.end())
+        {
+	  pos_chain_set.push_back(positionChaining(cv::Point(j, i), KEEP));
+	  kernel = this->machined_(cv::Range(i-1, i+2), cv::Range(j-1, j+2));
+	  if(isEndPoint(kernel))
+	  {
+	    pos_chain_set.push_back(positionChaining(cv::Point(j, i), REMOVE));
+	  }
+	  else
+	  {
+	    machined_.at<unsigned char>(i, j) = 0;
+	  }
+	  j++;
+        }
+
+        // Handelt es sich um einen anderen Punkt, zum nächsten Bildpunkt weitergehen
+        else
+        {
+          j++;
+        }
+      }
+      while(j < this->machined_.cols-1);
+    }
+
+    // Weitere Doppelschleife, die möglicherweise übrig gebliebene Schriftstellen in relative Positionsfolgen ummünzen soll
+    for(i = 1; i < this->machined_.rows-1; i++)
+    {
+      j = 1;
+
+      do
+      {
+        // Ist der Bildpunkt mit einer 0 belegt, kann dieser übersprungen/ausgelassen werden
+        if(this->machined_.at<unsigned char>(i, j) == 0)
+        {
+          j++;
+          continue;
+        }
+
+        // Noch mit einer 1 belegte Bildpunkte zum Starten einer Verkettung nutzen und erst danach zum nächsten Pixel fortschreiten
+        else
+        {
+          pos_chain = positionChaining(cv::Point(j, i), REMOVE);
+
+          // Positionskette nur abspeichern, wenn es sich wirklich um eine Kette mehrerer Positionen statt einer einzelnen Position handelt
+          if(pos_chain.size() >= 4)  // initial used value is 2
+          {
+            pos_chain_set.push_back(pos_chain);
+          }
+
+          // Nächste Spalte
+          j++;
+        }
+      }
+      while(j < this->machined_.cols-1);
+    }
+  }
+};
+
+int main(int argc, char** argv)
+{
+  // Initialisierung der Node
+  ros::init(argc, argv, "point_chaining");
+
+  // Erstellung eines Objekts der für die Ausführung des Codes erschaffenen Klasse
+  CoordinateDetector cd;
+
+  // Warten auf die Auslösung von Callbacks durch empfangene Messages
+  ROS_INFO("Waiting for published binary images with writings.");
+  ros::spin();
+
+  return 0;
+}

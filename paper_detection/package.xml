@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+
+<package>
+  <name>paper_detection</name>
+
+  <version>0.0.0</version>
+
+  <description>
+As a whole the package is dedicated to the detection of a sheet of paper in an arbitrary environment. Thus, input is an image of the environment and output is an image which shows only the detected sheet of paper. The package consists of two nodes. The first can be used to find all the rectangles in a picture. The second node is for centering an element and needs three corners of the element to center it. When the given element is not a rectangle the output image does not show only the element because an image itself is an rectangle. On top of that, the package has message types for transmitting points, vectors of points and vectors of vectors of points. I have created a library, too, in order to convert simply from OpenCV points to message points and vice versa.
+  </description>
+
+  <maintainer email="phi_tie@uni-bremen.de">Philip Tietjen</maintainer>
+
+  <license>BSD</license>
+
+  <author email="phi_tie@uni-bremen.de">Philip Tietjen</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>message_filters</build_depend>
+  <build_depend>cv_bridge</build_depend>
+  <build_depend>image_transport</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>message_generation</build_depend>
+
+  <run_depend>message_filters</run_depend>
+  <run_depend>cv_bridge</run_depend>
+  <run_depend>image_transport</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>message_runtime</run_depend>
+
+  <export></export>
+</package>

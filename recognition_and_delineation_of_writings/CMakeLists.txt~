@@ -1,0 +1,30 @@
+cmake_minimum_required(VERSION 2.8.3)
+
+project(recognition_and_delineation_of_writings)
+
+find_package(catkin REQUIRED COMPONENTS
+  image_transport
+  roscpp
+  rospy
+  std_srvs
+  sensor_msgs
+  cv_bridge
+)
+
+catkin_package(
+  CATKIN_DEPENDS
+)
+
+include_directories(
+  ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+  ${roscpp_INCLUDE_DIRS}
+  ${rospy_INCLUDE_DIRS}
+)
+
+add_executable(starting_node src/starting_node.cpp)
+add_dependencies(starting_node ${catkin_EXPORTED_TARGETS})
+target_link_libraries(starting_node
+  ${catkin_LIBRARIES}
+  ${OpenCV_LIBRARIES}
+)

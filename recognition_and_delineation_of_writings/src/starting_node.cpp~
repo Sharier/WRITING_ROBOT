@@ -1,0 +1,359 @@
+// Einbinden der Bibliotheken, darunter leerer Service-Typ und Transport von Bildern in ROS
+//Including the libraries, including empty service type and transport of images in ROS
+
+
+#include <ros/ros.h>
+#include <ros/spinner.h>
+#include <ros/callback_queue.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <iostream>
+#include <boost/thread/thread.hpp>
+#include <boost/chrono/chrono.hpp>
+#include <std_srvs/Empty.h>
+#include <sensor_msgs/Image.h>
+#include <cv_bridge/cv_bridge.h>
+#include <image_transport/image_transport.h>
+#include <opencv2/core/core.hpp>
+#include <opencv2/highgui/highgui.hpp>
+
+static const std::string OPENCV_WINDOW = "environment";
+
+// Klasse, welche Bilder eines Topics aufnimmt und immer, wenn der angebotene Service nachgefragt wird, das aktuelle Bild auf ein anderes Topic publisht; Erhaltene Bildstream wird zudem in Fenster eingeblendet
+//Class which takes pictures of a topic and always publishes the current picture to another topic when the offered service is requested; Image stream is also displayed in windows
+
+
+class ImageDiverter
+{
+private:
+  ros::NodeHandle node_;
+  image_transport::ImageTransport it_;
+  image_transport::Subscriber sub_;
+  image_transport::Publisher pub_;
+  boost::mutex lock_;
+  bool update_image_;
+  bool running_;
+  const int queue_size_;
+  bool let_pass_;
+  cv::Mat img_;
+  ros::AsyncSpinner spinner_;
+  ros::ServiceServer server_;
+
+  // Funktion, die die Handlungsschritte als Reaktion auf eingegangene Bilder, beinhaltet
+//Function, which includes the action steps in response to received images
+
+
+  void rxImageCallback(const sensor_msgs::ImageConstPtr& ros_img_ptr)
+  {
+    cv::Mat img;
+
+    // Foto in OpenCV einlesen
+//Photo in OpenCV
+
+
+    if(ros_img_ptr == NULL)
+    {
+      ROS_ERROR("Received no image data.");
+      return;
+    }
+    else
+    {
+      readImage(ros_img_ptr, img);
+    }
+
+    // Bild speichern als Member speichern und über angepasste Variable anzeigen, dass ein neues Bild verfügbar ist
+//Save image as member and display a new image via customized variable
+
+
+    lock_.lock();
+    this->img_ = img;
+    update_image_ = true;
+    lock_.unlock();
+  }
+
+  // Callback-Funktion, die den Service bietet, das Durchlassen eines Bildes zu aktivieren
+//Callback function, which provides the service to enable the passage of an image
+
+
+  bool enableRedirecting(std_srvs::Empty::Request& req, std_srvs::Empty::Response& res)
+  {
+    // Weiterreichung eines ankommenden Bildes zulassen
+//Allow an incoming image to be submitted
+
+
+
+    lock_.lock();
+    let_pass_ = true;
+    lock_.unlock();
+
+    // Rückgabe von true symbolisiert die erfolgreiche Anwendung des Services
+//Returning true represents the successful application of the service
+
+
+
+    return 1;
+  }
+
+  // Funktion zum Anzeigen des aktuellen Bildes
+//Function to display the current image
+
+
+  void imageViewer()
+  {
+    cv::Mat img;
+
+    // Publisher kreieren
+//Publisher create 
+
+
+    pub_ = it_.advertise("image/raw/environment", 1);
+
+    // OpenCV-Fenster aufrufen
+//Open the OpenCV window
+
+
+    //cv::namedWindow(OPENCV_WINDOW);
+
+    //cv::startWindowThread();
+
+
+    // Endlosschleife, die nur endet, falls das Ende vom Handeln innerhalb der Klasse gefordert ist
+//Endless loop that ends only if the end of the action within the class is required
+
+
+
+    while(running_ && ros::ok())
+    {
+      // Zeigt logische Variable an, dass neues Bild vorliegt, so wird dieses im Ausgabefenster aktualisiert und die logische Variable invertiert
+//If a logical variable indicates that a new image is present, this is updated in the output window and the logical variable is inverted
+
+
+
+
+      if(update_image_)
+      {
+        lock_.lock();
+        img = this->img_;
+        update_image_ = false;
+        lock_.unlock();
+        //cv::imshow(OPENCV_WINDOW, img);
+
+
+        // Falls logische Member-Variable anzeigt, dass Bild weitergereicht werden soll, so erfolgt ein Aufruf der Funktion zum Publishen von Bildern auf einem anderen Topic
+//If a logical member variable indicates that the image is to be forwarded, the function for publishing images on another topic is called
+
+
+
+
+        if(let_pass_)
+        {
+          imagePublisher();
+        }
+      }
+    }
+
+    // OpenCV-Fenster schließen
+//Close the OpenCV window
+
+
+    cv::destroyAllWindows();
+  }
+
+  // Funktion, die zuletzt angekommenes Bild auf dem neuen Topic publisht
+//Function, which publishes last image on the new topic
+
+
+
+  void imagePublisher()
+  {
+    sensor_msgs::ImagePtr ros_img_ptr;
+    cv_bridge::CvImage cv_img;
+    cv::Mat img;
+
+    // Verpacken des Zielbildes im ROS-Bildformat; ggf. Ausgabe einer Fehlermeldung bei der Umwandlung
+//Packing the target image in ROS image format; If necessary, output of an error message during conversion
+
+
+
+
+    lock_.lock();
+    img = this->img_;
+    lock_.unlock();
+    cv_img = cv_bridge::CvImage(std_msgs::Header(), sensor_msgs::image_encodings::BGR8, img);
+    try
+    {
+      ros_img_ptr = cv_img.toImageMsg();
+    }
+    catch (cv_bridge::Exception& e)
+    {
+      ROS_ERROR("Problem with cv_bridge regarding the conversion from ROS to CV format: %s", e.what());
+      return;
+    }
+
+    // Publishen des Bildes
+//Publish the image
+
+
+    ros_img_ptr->header.stamp = ros::Time::now();
+    pub_.publish(ros_img_ptr);
+    ROS_INFO("Redirected an image successfully.");
+
+    // Passiervariable wieder auf falsch setzen, damit keine weiteren Fotos umgeleitet werden
+//Set the passier variable back to false so that no further photos are redirected
+
+
+
+    lock_.lock();
+    let_pass_ = false;
+    lock_.unlock();
+  }
+
+  // Konvertierung des eingehenden Bildes in das umgänglichere OpenCV-Format Mat
+//Convert the incoming image to the more manageable OpenCV format Mat
+
+
+
+  void readImage(const sensor_msgs::Image::ConstPtr ros_img_ptr, cv::Mat &img) const
+  {
+    cv_bridge::CvImageConstPtr cv_img_ptr;
+
+    // Übertragung des empfangenen ROS-internen Bildes in OpenCV-kompatibles Bild des Formats BGR8, bei Scheitern dieses Vorhabens Ausgabe
+//Transfer of the received ROS internal image to OpenCV-compatible image of the format BGR8, if this project fails
+
+
+    // einer ROS-Fehlermeldung
+//An ROS error message
+
+
+    try
+    {
+      cv_img_ptr = cv_bridge::toCvShare(ros_img_ptr, sensor_msgs::image_encodings::BGR8); //cv_img_ptr->encoding
+
+    }
+    catch (cv_bridge::Exception& e)
+    {
+      ROS_ERROR("Problem with cv_bridge regarding the conversion from ROS to CV format: %s", e.what());
+      return;
+    }
+
+    // Bilddaten in übergebenem Argument hinterlegen
+//Store the image data in a given argument
+
+
+    cv_img_ptr->image.copyTo(img);
+  }
+
+public:
+  ImageDiverter()
+    : update_image_(false), running_(false), queue_size_(5), let_pass_(false), spinner_(0), it_(node_)
+  {
+  }
+
+  ~ImageDiverter()
+  {
+  }
+
+  // Funktion, um die in der Klasse inbegriffenen Aktionen laufen zu lassen
+//Function to run the actions included in the class
+
+
+  void run()
+  {
+    // Variable anzeigen lassen, dass die Klasse aktiv ist
+//Variable to indicate that the class is active
+
+
+    running_ = true;
+
+    // Einrichtung einer Subscribereinheit zum Empfangen von Bildern
+//Setting up a subscriber unit for receiving images
+
+
+    sub_ = it_.subscribe("/kinect2/hd/image_color_rect", queue_size_, &ImageDiverter::rxImageCallback, this);
+
+    // Notation des angebotenen Services
+//Notation of the offered service
+
+
+    server_ = node_.advertiseService("redirect_image", &ImageDiverter::enableRedirecting, this);
+    ROS_INFO("Waiting for demands for service 'redirect_image'.");
+
+    // Ermöglichung von Callbacks in verschiedenen Threads
+//Enables callbacks in different threads
+
+
+    spinner_.start();
+
+    // In regelmäßigen Zeitabständen überprüfen, ob Bild eingeblendet werden kann und die Node nicht heruntergefahren werden muss
+//Periodically check whether the image can be displayed and the node does not need to be down
+
+
+
+    boost::chrono::milliseconds duration(1);
+    while(!update_image_)
+    {
+      if(!ros::ok())
+      {
+        return;
+      }
+      boost::this_thread::sleep_for(duration);
+    }
+
+    // Aufruf der Funktion zum Anzeigen
+//Call the function to display
+
+
+
+    imageViewer();
+
+    // Parallelausführung stoppen
+//Stop parallel execution
+
+
+
+    spinner_.stop();
+
+    // Klasse läuft nicht mehr, daher entsprechende Variable anpassen
+//Class no longer runs, so adjust corresponding variable
+
+
+
+
+    running_ = false;
+  }
+};
+
+int main(int argc, char **argv)
+{
+  // Aktivierung der Node, um im Anschluss die ROS-Features nutzen zu können
+//Activation of the node to use the ROS features
+
+
+
+  ros::init(argc, argv, "starting_node");
+
+  // Gibt es Gründe für das Beenden der Handlung, so wird diesen nachgekommen
+//If there are grounds for the ending of the action, this is done
+
+
+
+  if(!ros::ok())
+  {
+    return 0;
+  }
+
+  // Klasse zum Anzeigen und Weiterleiten der Bilder agieren lassen
+//Class to display and forward the images
+
+
+  ImageDiverter id;
+  id.run();
+
+  // ROS-Node schließen
+//Close the ROS node
+
+
+  ros::shutdown();
+
+  return 0;
+}

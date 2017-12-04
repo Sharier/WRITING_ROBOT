@@ -1,0 +1,22 @@
+#ifndef COORDINATE_EXPOSURE_CONVERSION_H
+#define COORDINATE_EXPOSURE_CONVERSION_H
+
+// Funktion zur Umwandlung von msg-Format coordinate zu Point_<double>
+inline void decodeCoordinate(const coordinate_exposure::coordinate& input, cv::Point2d& output)
+
+// Funktion zur Umwandlung von Point_<double> zu msg_format coordinate
+inline void codeCoordinate(const cv::Point2d& input, coordinate_exposure::coordinate& output)
+
+// Funktion zur Umwandlung von msg-Format vector_of_coordinates zu vector<Point_<double> >
+inline void decodeVectorOfCoordinates(const coordinate_exposure::vector_of_coordinates& input, std::vector<cv::Point2d>& output)
+
+// Funktion zur Umwandlung von vector<Point_<double> > zu msg-Format vector_of_coordinates
+inline void codeVectorOfCoordinates(const std::vector<cv::Point2d>& input, exposure::vector_of_coordinates& output)
+
+// Funktion zur Umwandlung von msg-Format vector_of_vector_of_coordinates zu vector<vector<Point_<double> > >
+inline void decodeVectorOfVectorOfCoordinates(const coordinate_exposure::vector_of_vector_of_coordinates& input, std::vector<std::vector<cv::Point2d> >& output)
+
+// Funktion zur Umwandlung von vector<vector<Point_<double> > > zu msg-Format vector_of_vector_of_coordinates
+inline void codeVectorOfVectorOfCoordinates(const std::vector<std::vector<cv::Point2d> >& input, coordinate_exposure::vector_of_vector_of_coordinates& output)
+
+#endif // COORDINATE_EXPOSURE_CONVERSION_H

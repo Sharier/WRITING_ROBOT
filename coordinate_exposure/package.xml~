@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+
+<package>
+  <name>coordinate_exposure</name>
+
+  <version>0.0.0</version>
+
+  <description>The package hosts different nodes regarding the exposure to coordinates. At first, there is a node called 'routing' that tries to find a cheap order of route segments so that the sum of the distances from one route segment to the next route segment is small. In other words this node looks for a good overall route when different route segment are given. The two other nodes in this package are for the converting of relative positions in world coordinates and the saving of those world coordinates. Their calculations were intended for the TS 2100 controller at the institute of automation at university of Bremen. Therefore, an adjustment of those calculations is necessary for outer usage. All nodes have the massage type(s) they use in common. This message type(s) are created by msg-files in this package. There is a library, moreover, which is linked to the mentioned msg-files. It offers functions for the conversion between the msg coordinates and OpenCV coordinates (Point2d).
+  </description>
+
+  <maintainer email="phi_tie@uni-bremen.de">Philip Tietjen</maintainer>
+
+  <license>BSD</license>
+
+  <author email="phi_tie@uni-bremen.de">Philip Tietjen</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>message_generation</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>message_runtime</run_depend>
+
+  <export></export>
+</package>

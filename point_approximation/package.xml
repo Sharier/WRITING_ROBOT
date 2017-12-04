@@ -1,0 +1,33 @@
+<?xml version="1.0"?>
+
+<package>
+  <name>point_approximation</name>
+
+  <version>0.0.0</version>
+
+  <description>
+This package consists of only one node. The node expects to receive a binary image with zeros and ones which displays a skeleton. For those subscribed pictures the node identify several sets of relative positions which result in a picture similar to the binary image if they are connected by straight lines. The node publishes all this relative positions summed up in one message of the type 'coordinate_sets' from package 'coordinate_exposure'. Therefore, the package is dependend on the package 'coordinate exposure'.
+  </description>
+
+  <maintainer email="phi_tie@uni-bremen.de">Philip Tietjen</maintainer>
+
+  <license>BSD</license>
+
+  <author email="phi_tie@uni-bremen.de">Philip Tietjen</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>cv_bridge</build_depend>
+  <build_depend>image_transport</build_depend>
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>coordinate_exposure</build_depend>
+
+  <run_depend>cv_bridge</run_depend>
+  <run_depend>image_transport</run_depend>
+  <run_depend>roscpp</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>coordinate_exposure</run_depend>
+
+  <export></export>
+</package>

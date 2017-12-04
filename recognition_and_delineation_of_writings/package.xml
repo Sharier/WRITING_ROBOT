@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+
+<package>
+  <name>recognition_and_delineation_of_writings</name>
+
+  <version>0.0.0</version>
+
+  <description>This is the package.xml of a package which was built especially for the whole process from putting a painted sheet of paper under a camera to portray the same pattern on a clear sheet of paper with the help of a robot. The package has a node called 'starting_node' that takes images from a topic and pushes them on an other topic every time a user invokes the offered service with the name 'redirect_image'. Furthermore, the package provides a launch file that runs a lot of nodes from the packages 'paper_detection', 'coordinate_exposure', 'point_approximation and 'writings_determination' and connects them via changing the names of the published and subscribed topics.
+  </description>
+
+  <maintainer email="phi_tie@uni-bremen.de">Philip Tietjen</maintainer>
+
+  <license>BSD</license>
+
+  <author email="phi_tie@uni-bremen.de">Philip Tietjen</author>
+
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>roscpp</build_depend>
+  <build_depend>rospy</build_depend>
+  <build_depend>rostime</build_depend>
+  <build_depend>std_msgs</build_depend>
+  <build_depend>std_srvs</build_depend> 
+  <build_depend>sensor_msgs</build_depend>
+  <build_depend>image_transport</build_depend>
+  <build_depend>cv_bridge</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <run_depend>rospy</run_depend>
+  <run_depend>rostime</run_depend>
+  <run_depend>std_msgs</run_depend>
+  <run_depend>std_srvs</run_depend>
+  <run_depend>sensor_msgs</run_depend>
+  <run_depend>message_runtime</run_depend>
+  <run_depend>image_transport</run_depend>
+  <run_depend>cv_bridge</run_depend>
+
+  <export></export>
+</package>

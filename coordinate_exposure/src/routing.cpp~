@@ -1,0 +1,238 @@
+// Einbinden der Bibliotheken, darunter diejenige für die Konvertierung der Koordinaten zwischen OpenCV und dem ROS-Message-Typ
+//Including the libraries, including the one for converting the coordinates between OpenCV and the ROS message type
+
+
+#include <ros/ros.h>
+#include <vector>
+#include <opencv2/core/core.hpp>
+#include <coordinate_exposure/coordinate_sets_exchange.h>
+#include <coordinate_exposure/coordinate_conversion.h>
+
+// Funktion berechnet die Streckendifferenz, wenn gemäß den übergebenen Iteratoren vertauscht würde und gibt diese zurück
+//Function calculates the stretch difference if it were swapped according to the passed iterators and returns it
+
+
+double routeDifference(std::vector<std::vector<cv::Point2d> >::iterator front_iter, std::vector<std::vector<cv::Point2d> >::iterator back_iter)
+{
+  cv::Point2d first_pair_start, first_pair_end;
+  cv::Point2d second_pair_start, second_pair_end;
+  double distance_before, distance_after;
+
+  // Zugriff auf die benötigten Koordinaten mithilfe der übergebenen Iteratoren
+//Access the required coordinates using the passed iterators
+
+
+  first_pair_start = front_iter->back();
+  first_pair_end = (*(front_iter+1)).front();
+  second_pair_start = back_iter->back();
+  second_pair_end = (*(back_iter+1)).front();
+
+  // Berechnung der zurückzulegenden Strecken der beiden Routen
+//Calculation of the distances to be covered on the two routes
+
+
+  distance_before = cv::norm(first_pair_start - first_pair_end) + cv::norm(second_pair_start - second_pair_end);
+  distance_after = cv::norm(first_pair_start - second_pair_start) + cv::norm(first_pair_end - second_pair_end);
+
+  // Rückgabe der Streckendifferenz beider Routen
+//Return the stretch difference of both routes
+
+
+  return distance_after - distance_before;
+}
+
+// Funktion vergleicht die Distanzersparnisse durch die verschiedenen möglichen paarweisen Vertauschungen und führt die vielversprechenste durch, solange diese überhaupt die Distanz verringert; wurde keine Vertauschung vorgenommen, d. h. sind keine Distanzverringerungen durch paarweisen Tausch mehr möglich, so nimmt der Funktionsrückgabeparameter den logischen Wert 0 an
+//Function compares the distance savings by the various possible pairwise interchanges and performs the most promising as long as it reduces the distance at all; No commutation has been made, that is, no distance reductions are possible by paired exchange, the function return parameter assumes the logical value 0
+
+
+bool iteration(std::vector<std::vector<cv::Point2d> >::iterator begin_iter, std::vector<std::vector<cv::Point2d> >::iterator end_iter)
+{
+  std::vector<std::vector<cv::Point2d> >::iterator front_iter = begin_iter, back_iter;
+  std::vector<std::vector<cv::Point2d> >::iterator min_route_front_iter, min_route_back_iter;
+  double delta_route;
+
+  // Maximale Wegeinsparung auf 0 vorinitialisieren
+//Maximum path saving to 0 preinitialize
+
+
+  double min_delta_route = 0;
+
+  // Betrachtung aller Routenveränderungen durch paarweisen Streckenaustausch
+//Viewing of all route changes by paired route exchange
+
+
+  do
+  {
+    for(back_iter = front_iter+1; back_iter != end_iter-1; back_iter++)
+    {
+      // Ermittlung der Längendifferenz zwischen bisheriger Strecke und Alternativstrecke
+//Determination of the length difference between previous route and alternative route
+
+
+      delta_route = routeDifference(front_iter, back_iter);
+
+      // Ist Wegeinsparung des zuletzt behandelten Alternativweges größer als alle bisherigen, so wird dieser Wert sowie die dazugehörigen Iteratoren gespeichert
+//If the route of the last alternative route is greater than the previous one, this value and the iterators are saved
+
+
+
+      if(delta_route < min_delta_route)
+      {
+        min_delta_route = delta_route;
+        min_route_front_iter = front_iter;
+        min_route_back_iter = back_iter;
+      }
+    }
+
+    // Inkrementierung des vorderen Paares (der vorderen Strecke)
+//Incrementing the front pair (front section)
+
+
+    front_iter++;
+  }
+  while(front_iter != end_iter-2);
+
+  // Durchführung des paarweisen Austausches, wenn mindestens eine der berechneten Veränderungen eine Streckenreduzierung mit sich bringt
+//Carry out the paired exchange if at least one of the calculated changes entails a reduction in the distance
+
+
+  if(min_delta_route < 0)
+  {
+    // Reihenfolgen, in der die Zwischen-Teilstrecken abgefahren werden, umdrehen, damit wirklich nur die beiden in der Rechnung berücksichtigten Strecken vertauscht werden
+//Sequence in which the intermediate sections are traversed, so that only the two sections included in the calculation are interchanged
+
+
+
+    std::reverse(min_route_front_iter+1, min_route_back_iter+1);
+
+    // Auch die Zwischen-Teilstrecken in sich umdrehen (d. h. Start- und Endpunkt werden getauscht)
+//Also reverse the intermediate sections (ie, the start and end points are swapped)
+
+
+
+    for(std::vector<std::vector<cv::Point2d> >::iterator reverse_iter = min_route_front_iter+1; reverse_iter != min_route_back_iter+1; reverse_iter++)
+    {
+      std::reverse(reverse_iter->begin(), reverse_iter->end());
+    }
+
+    // Funktion gibt aus, dass eine Veränderung vorgenommen wurde
+//Function indicates that a change has been made
+
+
+    return true;
+  }
+
+  // Funktion gibt aus, dass aufgrund fehlender Einsparungspotentiale keine Veränderung vorgenommen wurde
+//Function indicates that no change has been made due to the lack of potential savings
+
+
+  else
+  {
+    return false;
+  }
+}
+
+// Funktion, die innerhalb der erhaltenen Iteratoren die Methode der paarweisen Vertauschung durchführt
+//Function which implements the method of pairing in the iterators
+
+
+
+void pairwiseExchange(std::vector<std::vector<cv::Point2d> >::iterator begin_iter, std::vector<std::vector<cv::Point2d> >::iterator end_iter)
+{
+  bool terminator;
+
+  // Durchführung der Methode der paarweisen Vertauschung nur, wenn dafür so viele Streckenabschnitte vorhanden sind, dass die Verbindungen dieser vertauscht werden können
+//Carry out the method of the pairwise reversal only if there are so many route sections that the connections of these can be interchanged
+
+
+
+  if(begin_iter != end_iter && begin_iter+1 != end_iter && begin_iter+2 != end_iter && begin_iter+3 != end_iter)
+  {
+    // Iteration solange ohne Terminierung durchführen bis keine paarweise Vertauschung mehr Einsparungen ermöglicht
+//Iteration without scheduling until no pairing allows more savings
+
+
+    do
+    {
+      terminator = !iteration(begin_iter, end_iter);
+    }
+    while(terminator == false);
+  }
+}
+
+// Callback-Funktion, die immer aktiv werden kann, wenn der Service der paarweisen Vertauschung erfragt wird
+//Callback function, which can always be activated when the service of the pairwise interchange is requested
+
+
+bool rxCallback(coordinate_exposure::coordinate_sets_exchange::Request& req, coordinate_exposure::coordinate_sets_exchange::Response& res)
+{
+  coordinate_exposure::coordinate_sets req_coordinate_chain_set;
+  coordinate_exposure::coordinate_sets res_coordinate_chain_set;
+  std::vector<std::vector<cv::Point_<double> > > coordinate_chain_set;
+
+  // Vektor mit Koordinatensätzen aus Request übernehmen
+//Vector with coordinate sets from Request
+
+
+  req_coordinate_chain_set = req.data;
+
+  // Wechsel des Formats der Koordinaten
+//Change the format of the coordinates
+
+
+  decodeCoordinateSets(req_coordinate_chain_set, coordinate_chain_set);
+
+  // Optimierung des Weges mithilfe der paarweisen Vertauschung
+//Optimize the way using the pairing
+
+
+  pairwiseExchange(coordinate_chain_set.begin(), coordinate_chain_set.end());
+
+  // Rückwechsel des Formats der Koordinaten
+//Reversing the format of the coordinates
+
+
+  codeCoordinateSets(coordinate_chain_set, res_coordinate_chain_set);
+
+  // Resultat der Tourenplanung in Response schreiben
+//Write the result of the route planning in Response
+
+
+  res.data = res_coordinate_chain_set;
+
+  // Logische 1 indiziert, dass der Service erfolgreich durchgeführt wurde
+//Logical 1 indicates that the service has been successfully performed
+
+
+  return true;
+}
+
+int main(int argc, char** argv)
+{
+  // Initialisierung der Node
+//Initialization of the node
+
+
+  ros::init(argc, argv, "routing");
+
+  // Node-Objekte mit relativen und privaten Namensräumen
+//Node objects with relative and private namespaces
+
+
+  ros::NodeHandle node;
+
+  // Service mit der dafür vorgesehen Callback-Funktion erstellen
+//Service with the provided callback function
+
+
+  ros::ServiceServer server = node.advertiseService("routing", rxCallback);
+
+  // Warten auf die Auslösung von Callbacks durch empfangene Messages
+//Waiting for callbacks to be triggered by received messages
+
+
+  ROS_INFO("Offering the service 'routing'.");
+  ros::spin();
+
+  return 0;
+}
