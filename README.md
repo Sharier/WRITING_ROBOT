@@ -42,5 +42,13 @@ https://github.com/code-iai/iai_kinect2
 • Finally, in another terminal type "rosrun socket_communication receive_command"
 
 
+# The setup of the system and one of the writing by the robotic end effector are shown below:
+
+
+
+![Overall Setup Overview](labelled_system_overview.jpg)
+
+![Results of writing from the robotic End effector](camera_changed.png)
+
 
 
